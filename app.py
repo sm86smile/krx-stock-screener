@@ -283,11 +283,6 @@ MIN_PERIOD_EXCESS_RETURN_FINAL_PCT = st.sidebar.number_input(
     )
 )
 
-st.sidebar.info(
-    "recent_60_excess 조건은 사용하지 않습니다. "
-    "대신 조회기간 전체 상대강도인 period_excess_return을 사용합니다."
-)
-
 st.sidebar.divider()
 
 run_button = st.sidebar.button("분석 실행", type="primary")
