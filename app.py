@@ -47,7 +47,7 @@ except Exception:
 if not AUTH_KEY:
     st.error(
         "KRX_AUTH_KEY가 설정되어 있지 않습니다. "
-        ".streamlit/secrets.toml 또는 Streamlit Cloud Secrets에 KRX_AUTH_KEY를 등록하세요."
+        "Streamlit Cloud의 Secrets에 KRX_AUTH_KEY를 등록하세요."
     )
     st.stop()
 
@@ -62,59 +62,199 @@ today = datetime.today().date()
 
 kospi_start = st.sidebar.date_input(
     "KOSPI 시작일",
-    value=pd.to_datetime("2025-01-01").date()
+    value=pd.to_datetime("2025-01-01").date(),
+    help="코스피 종목과 KOSPI 지수를 비교할 분석 시작일입니다."
 )
 
 kospi_end = st.sidebar.date_input(
     "KOSPI 종료일",
-    value=today
+    value=today,
+    help="코스피 종목과 KOSPI 지수를 비교할 분석 종료일입니다."
 )
 
 kosdaq_start = st.sidebar.date_input(
     "KOSDAQ 시작일",
-    value=pd.to_datetime("2025-01-01").date()
+    value=pd.to_datetime("2025-01-01").date(),
+    help="코스닥 종목과 KOSDAQ 지수를 비교할 분석 시작일입니다."
 )
 
 kosdaq_end = st.sidebar.date_input(
     "KOSDAQ 종료일",
-    value=today
+    value=today,
+    help="코스닥 종목과 KOSDAQ 지수를 비교할 분석 종료일입니다."
 )
 
 st.sidebar.divider()
 
+st.sidebar.subheader("기본 설정")
+
 DOWN_THRESHOLD = st.sidebar.number_input(
-    "지수 하락일 기준",
+    "지수 하락일 기준, %",
     min_value=-10.0,
     max_value=0.0,
     value=-0.5,
     step=0.1,
-    help="-0.5는 지수가 -0.5% 이하 하락한 날을 의미합니다."
+    help=(
+        "지수 하락일을 정의하는 기준입니다. "
+        "예를 들어 -0.5는 지수가 하루에 -0.5% 이하 하락한 날만 "
+        "하락일로 계산한다는 의미입니다."
+    )
 ) / 100
-
-MIN_AVG_TRDVAL_EOK = st.sidebar.number_input(
-    "평균 거래대금 기준, 억 원",
-    min_value=0,
-    value=50,
-    step=10
-)
-
-MIN_AVG_TRDVAL = MIN_AVG_TRDVAL_EOK * 100_000_000
 
 TOP_N = st.sidebar.number_input(
     "표시 종목 수",
     min_value=10,
     max_value=300,
     value=50,
-    step=10
+    step=10,
+    help="화면에 표시할 상위 종목 수입니다. 최종 조건을 통과한 종목 중 total_score 순으로 표시합니다."
 )
 
 SLEEP_SEC = 0.03
+
+st.sidebar.divider()
+
+
+# ============================================================
+# 3. 스크리닝 조건 설정
+# ============================================================
+
+# 1차 스크리닝 조건
+MIN_AVG_TRDVAL = 5_000_000_000
+MIN_AVG_TRDVAL_EOK = 50
+MIN_AVG_EXCESS_DOWN_1ST = 0.0
+MIN_DEFENSE_RATE_1ST = 0.55
+MAX_DOWNSIDE_CAPTURE_1ST = 1.0
+
+# 최종 스크리닝 조건
+MIN_DEFENSE_RATE_FINAL = 0.60
+MIN_POSITIVE_ON_DOWN_RATE_FINAL = 0.25
+MIN_AVG_EXCESS_DOWN_FINAL = 0.005
+MAX_DOWNSIDE_CAPTURE_FINAL = 0.80
+MAX_DOWN_BETA_FINAL = 0.80
+MIN_PERIOD_EXCESS_RETURN_FINAL = 0.0
+
+
+# ============================================================
+# 4. 사이드바에 조건 표시
+# ============================================================
+
+st.sidebar.subheader("1차 스크리닝 조건")
+
+st.sidebar.markdown(
+    "- **n_days**: 조회기간 전체 거래일 기준",
+    help=(
+        "코스피 종목은 KOSPI 조회기간의 전체 거래일 수를 기준으로 하고, "
+        "코스닥 종목은 KOSDAQ 조회기간의 전체 거래일 수를 기준으로 합니다. "
+        "즉, 조회기간 동안 데이터가 충분히 존재하는 종목만 남깁니다."
+    )
+)
+
+st.sidebar.markdown(
+    "- **n_down_days**: 조회기간 내 지수 하락일 전체 기준",
+    help=(
+        "입력한 조회기간 동안 KOSPI 또는 KOSDAQ 지수가 하락일 기준 이하로 빠진 날의 수입니다. "
+        "종목도 해당 하락일 전체에 대해 비교 가능한 데이터가 있어야 합니다."
+    )
+)
+
+st.sidebar.markdown(
+    f"- **avg_trdval**: {MIN_AVG_TRDVAL_EOK}억 원 이상",
+    help=(
+        "조회기간 동안의 평균 거래대금입니다. "
+        "거래대금이 너무 작은 종목은 실제 매매가 어렵거나 가격 왜곡이 있을 수 있어 제외합니다."
+    )
+)
+
+st.sidebar.markdown(
+    "- **avg_excess_down**: 0 초과",
+    help=(
+        "지수 하락일에 종목 수익률이 지수 수익률보다 평균적으로 높았는지를 보는 값입니다. "
+        "0보다 크면 지수 하락일에 평균적으로 지수보다 강했다는 의미입니다."
+    )
+)
+
+st.sidebar.markdown(
+    "- **defense_rate**: 55% 이상",
+    help=(
+        "지수 하락일 중 종목이 지수보다 덜 빠지거나 더 오른 날의 비율입니다. "
+        "55% 이상이면 하락일의 절반 이상에서 지수보다 강했다는 의미입니다."
+    )
+)
+
+st.sidebar.markdown(
+    "- **downside_capture**: 1.0 이하",
+    help=(
+        "지수 하락폭 대비 종목이 얼마나 하락했는지 보는 지표입니다. "
+        "1.0 이하면 지수보다 덜 빠졌다는 의미입니다. "
+        "0에 가까울수록 방어력이 좋고, 음수면 지수 하락기에 오히려 상승했다는 의미입니다."
+    )
+)
+
+st.sidebar.divider()
+
+st.sidebar.subheader("최종 스크리닝 조건")
+
+st.sidebar.markdown(
+    "- **defense_rate**: 60 이상",
+    help="지수 하락일 중 종목이 지수보다 강했던 비율이 60% 이상인 종목만 남깁니다."
+)
+
+st.sidebar.markdown(
+    "- **positive_on_down_rate**: 25 이상",
+    help="지수 하락일 중 종목 수익률이 플러스였던 날의 비율이 25% 이상인 종목만 남깁니다."
+)
+
+st.sidebar.markdown(
+    "- **avg_excess_down**: 0.5 이상",
+    help=(
+        "지수 하락일 평균 초과수익률이 +0.5%p 이상인 종목만 남깁니다. "
+        "예를 들어 지수가 -1.0% 하락한 날 종목이 -0.3%만 하락했다면 초과수익률은 +0.7%p입니다."
+    )
+)
+
+st.sidebar.markdown(
+    "- **downside_capture**: 0.8 이하",
+    help=(
+        "지수 하락폭의 80% 이하만 하락한 종목을 의미합니다. "
+        "예를 들어 지수 하락일 전체 합산 수익률이 -10%인데 종목이 -5%라면 downside_capture는 0.5입니다."
+    )
+)
+
+st.sidebar.markdown(
+    "- **down_beta**: 0.8 이하",
+    help=(
+        "지수 하락일만 따로 계산한 베타입니다. "
+        "0.8 이하이면 하락장에서 지수 변동에 덜 민감한 종목으로 봅니다."
+    )
+)
+
+st.sidebar.markdown(
+    "- **period_excess_return**: 조회기간 전체 상대강도 플러스",
+    help=(
+        "최근 20일 기준이 아니라, 코스피/코스닥 각각 입력한 조회기간 전체에서 "
+        "종목 누적수익률이 지수 누적수익률보다 높았는지를 봅니다. "
+        "플러스이면 조회기간 전체 기준으로 지수를 이긴 종목입니다."
+    )
+)
+
+st.sidebar.markdown(
+    "- **recent_60_excess**: 조건 삭제",
+    help="기존 recent_60_excess 조건은 사용하지 않습니다."
+)
+
+st.sidebar.markdown(
+    f"- **avg_trdval_억원**: {MIN_AVG_TRDVAL_EOK} 이상",
+    help="평균 거래대금이 50억 원 이상인 종목만 남깁니다."
+)
+
+st.sidebar.divider()
 
 run_button = st.sidebar.button("분석 실행", type="primary")
 
 
 # ============================================================
-# 3. 공통 함수
+# 5. 공통 함수
 # ============================================================
 
 def yyyymmdd(date_value):
@@ -208,7 +348,7 @@ def find_col(df, candidates):
 
 
 # ============================================================
-# 4. 데이터 표준화 함수
+# 6. 데이터 표준화 함수
 # ============================================================
 
 def standardize_stock_df(raw_df, market):
@@ -352,7 +492,7 @@ def exclude_unwanted_stocks(df):
 
 
 # ============================================================
-# 5. 지표 계산 함수
+# 7. 지표 계산 함수
 # ============================================================
 
 def downside_beta(stock_ret, index_ret):
@@ -508,7 +648,7 @@ def build_market_requirements(kospi_index, kosdaq_index):
 
 
 # ============================================================
-# 6. 점수화 함수
+# 8. 점수화 함수
 # ============================================================
 
 def percentile_score(series, higher_is_better=True):
@@ -539,9 +679,9 @@ def add_scores(metrics, market_requirements):
         (df["n_days"] >= df["required_n_days"]) &
         (df["n_down_days"] >= df["required_n_down_days"]) &
         (df["avg_trdval"] >= MIN_AVG_TRDVAL) &
-        (df["avg_excess_down"] > 0) &
-        (df["defense_rate"] >= 0.55) &
-        (df["downside_capture"] <= 1.0)
+        (df["avg_excess_down"] > MIN_AVG_EXCESS_DOWN_1ST) &
+        (df["defense_rate"] >= MIN_DEFENSE_RATE_1ST) &
+        (df["downside_capture"] <= MAX_DOWNSIDE_CAPTURE_1ST)
     )
 
     df["eligible"] = eligible
@@ -658,12 +798,43 @@ def make_excel_bytes(filtered_display, top_display, kospi_top_display, kosdaq_to
 
 
 # ============================================================
-# 7. 실행
+# 9. 실행 전 안내
 # ============================================================
 
 if not run_button:
-    st.info("왼쪽 사이드바에서 조회기간과 조건을 설정한 뒤, **분석 실행**을 누르세요.")
+    st.info("왼쪽 사이드바에서 조회기간과 조건을 확인한 뒤, **분석 실행**을 누르세요.")
+
+    with st.expander("현재 적용된 스크리닝 조건 자세히 보기", expanded=True):
+        st.markdown(
+            """
+            ### 1차 스크리닝
+
+            - `n_days`: 코스피/코스닥 각각 입력한 조회기간 전체 거래일 기준
+            - `n_down_days`: 코스피/코스닥 각각 입력한 조회기간 내 지수 하락일 전체 기준
+            - `avg_trdval`: 50억 원 이상
+            - `avg_excess_down`: 0 초과
+            - `defense_rate`: 55% 이상
+            - `downside_capture`: 1.0 이하
+
+            ### 최종 스크리닝
+
+            - `defense_rate`: 60 이상
+            - `positive_on_down_rate`: 25 이상
+            - `avg_excess_down`: 0.5 이상
+            - `downside_capture`: 0.8 이하
+            - `down_beta`: 0.8 이하
+            - `period_excess_return`: 코스피/코스닥 각각 조회기간 전체 상대강도 플러스
+            - `recent_60_excess`: 조건 삭제
+            - `avg_trdval_억원`: 50 이상
+            """
+        )
+
     st.stop()
+
+
+# ============================================================
+# 10. 실행
+# ============================================================
 
 if kospi_start > kospi_end:
     st.error("KOSPI 시작일이 종료일보다 늦습니다.")
@@ -736,12 +907,12 @@ with st.spinner("KRX 데이터를 수집하고 분석 중입니다."):
 
     strict_filter = (
         (scored["eligible"]) &
-        (scored["defense_rate"] >= 0.60) &
-        (scored["positive_on_down_rate"] >= 0.25) &
-        (scored["avg_excess_down"] >= 0.005) &
-        (scored["downside_capture"] <= 0.80) &
-        (scored["down_beta"] <= 0.80) &
-        (scored["period_excess_return"] > 0) &
+        (scored["defense_rate"] >= MIN_DEFENSE_RATE_FINAL) &
+        (scored["positive_on_down_rate"] >= MIN_POSITIVE_ON_DOWN_RATE_FINAL) &
+        (scored["avg_excess_down"] >= MIN_AVG_EXCESS_DOWN_FINAL) &
+        (scored["downside_capture"] <= MAX_DOWNSIDE_CAPTURE_FINAL) &
+        (scored["down_beta"] <= MAX_DOWN_BETA_FINAL) &
+        (scored["period_excess_return"] > MIN_PERIOD_EXCESS_RETURN_FINAL) &
         (scored["avg_trdval"] >= MIN_AVG_TRDVAL)
     )
 
@@ -774,7 +945,7 @@ with st.spinner("KRX 데이터를 수집하고 분석 중입니다."):
 
 
 # ============================================================
-# 8. 화면 출력
+# 11. 화면 출력
 # ============================================================
 
 st.subheader("2. 분석 요약")
@@ -782,12 +953,37 @@ st.subheader("2. 분석 요약")
 c1, c2, c3, c4 = st.columns(4)
 
 c1.metric("조건 통과 종목", f"{len(filtered_scored):,}개")
-c2.metric("KOSPI 통과", f"{len(kospi_top):,}개")
-c3.metric("KOSDAQ 통과", f"{len(kosdaq_top):,}개")
+c2.metric("KOSPI TOP 표시", f"{len(kospi_top):,}개")
+c3.metric("KOSDAQ TOP 표시", f"{len(kosdaq_top):,}개")
 c4.metric("평균 거래대금 기준", f"{MIN_AVG_TRDVAL_EOK:,}억 원")
 
 st.write("시장별 조회기간 요구 조건")
 st.dataframe(market_requirements, use_container_width=True)
+
+with st.expander("적용된 스크리닝 조건 보기", expanded=False):
+    st.markdown(
+        """
+        ### 1차 스크리닝
+
+        - `n_days`: 코스피/코스닥 각각 입력한 조회기간 전체 거래일 기준
+        - `n_down_days`: 코스피/코스닥 각각 입력한 조회기간 내 지수 하락일 전체 기준
+        - `avg_trdval`: 50억 원 이상
+        - `avg_excess_down`: 0 초과
+        - `defense_rate`: 55% 이상
+        - `downside_capture`: 1.0 이하
+
+        ### 최종 스크리닝
+
+        - `defense_rate`: 60 이상
+        - `positive_on_down_rate`: 25 이상
+        - `avg_excess_down`: 0.5 이상
+        - `downside_capture`: 0.8 이하
+        - `down_beta`: 0.8 이하
+        - `period_excess_return`: 코스피/코스닥 각각 조회기간 전체 상대강도 플러스
+        - `recent_60_excess`: 조건 삭제
+        - `avg_trdval_억원`: 50 이상
+        """
+    )
 
 final_cols = [
     "market",
@@ -822,7 +1018,7 @@ final_cols = [
 available_cols = [c for c in final_cols if c in filtered_display.columns]
 
 if len(filtered_scored) == 0:
-    st.warning("조건을 만족하는 종목이 없습니다. 사이드바에서 조건을 완화해보세요.")
+    st.warning("조건을 만족하는 종목이 없습니다. 조회기간을 늘리거나 조건을 완화해보세요.")
 else:
     tab1, tab2, tab3 = st.tabs(["전체 TOP", "KOSPI TOP", "KOSDAQ TOP"])
 
@@ -853,44 +1049,4 @@ else:
         data=excel_bytes,
         file_name=file_name,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-
-# ============================================================
-# 9. 조건 설명
-# ============================================================
-
-with st.expander("적용된 스크리닝 조건 보기"):
-    st.markdown(
-        """
-        ### 1차 스크리닝 조건
-
-        - `n_days`: KOSPI/KOSDAQ 각각 조회기간 전체 거래일 수 이상
-        - `n_down_days`: KOSPI/KOSDAQ 각각 조회기간 내 전체 하락일 수 이상
-        - `avg_trdval`: 평균 거래대금 50억 원 이상
-        - `avg_excess_down`: 지수 하락일 평균 초과수익률 0 초과
-        - `defense_rate`: 55% 이상
-        - `downside_capture`: 1.0 이하
-
-        ### 최종 스크리닝 조건
-
-        - `defense_rate`: 60 이상
-        - `positive_on_down_rate`: 25 이상
-        - `avg_excess_down`: 0.5 이상
-        - `downside_capture`: 0.8 이하
-        - `down_beta`: 0.8 이하
-        - `period_excess_return`: 조회기간 전체 상대강도 플러스
-        - `avg_trdval_억원`: 50 이상
-
-        ### 랭킹 기준
-
-        `total_score` 높은 순서입니다.
-
-        - 하락일 평균 초과수익률: 25점
-        - Downside Capture: 25점
-        - 하락일 상승 비율: 20점
-        - 하락 베타: 10점
-        - 상승장 참여율: 10점
-        - 평균 거래대금: 10점
-        """
     )
