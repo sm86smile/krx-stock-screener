@@ -46,7 +46,7 @@ URLS = {
 # 기본 조회기간은 최근 1년입니다.
 
 today_kst = datetime.now(KST).date()
-start_date = today_kst - timedelta(days=365)
+start_date = today_kst - timedelta(days=180)
 
 KOSPI_START_DATE = start_date.strftime("%Y%m%d")
 KOSPI_END_DATE = today_kst.strftime("%Y%m%d")
