@@ -43,13 +43,13 @@ jobs:
           echo "daily_report.py 존재 여부 확인"
           ls -al daily_report.py
           python -m py_compile daily_report.py
-
+          
       - name: Run daily report
         env:
+          KRX_AUTH_KEY: ${{ secrets.KRX_AUTH_KEY }}
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
         run: |
           set -e
           python daily_report.py
