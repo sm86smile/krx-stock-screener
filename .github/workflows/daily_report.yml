@@ -3,7 +3,7 @@ name: daily-report
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 22 * * *"  # 한국시간 오전 7시
+    - cron: "30 21 * * *"  # 한국시간 오전 7시
 
 jobs:
   daily-report:
